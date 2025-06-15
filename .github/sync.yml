@@ -1,0 +1,60 @@
+name: Auto Sync Main Branch
+
+on:
+  # 当 main 分支有新的 push 时触发
+  push:
+    branches:
+      - main
+  # 或者定时触发，例如每天凌晨 2 点
+  schedule:
+    - cron: '0 2 * * *'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # 如果你的工作流需要修改并提交代码，你需要提供一个具有写入权限的 token。
+          # 默认的 GITHUB_TOKEN 通常只有读权限。
+          # 你可能需要创建一个 Personal Access Token (PAT) 并设置为仓库 secret。
+          # 例如：token: ${{ secrets.YOUR_PAT }}
+          # 更好的做法是确保你的工作流的 GITHUB_TOKEN 具有足够的权限。
+          # 参考：https://docs.github.com/en/actions/security-guides/automatic-token-authentication
+          # 这里我们假设默认 GITHUB_TOKEN 足够，如果不够则需要调整仓库设置或使用 PAT
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch and rebase with main
+        run: |
+          git fetch origin main:main
+          git rebase main
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if [[ $(git status --porcelain | wc -l) -gt 0 ]]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Pull Request if changes exist
+        if: steps.changes.outputs.has_changes == 'true'
+        uses: peter-evans/create-pull-request@v6 # 使用最新版本
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }} # 同样，确保有写入权限
+          commit-message: "chore: Auto sync with main branch"
+          title: "Auto sync: Pull latest changes from main"
+          body: "This PR automatically pulls the latest changes from the `main` branch."
+          branch: "auto-sync-branch" # 自动创建的新分支名称
+          base: "your-target-branch" # 你想同步的目标分支，例如 'dev' 或 'feature'
+          delete-branch: true
+          # 可选：如果希望 PR 自动合并，可以添加以下选项
+          # automerge: true
+          # merge-method: squash # 或 merge, rebase
